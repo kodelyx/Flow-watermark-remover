@@ -1,0 +1,15 @@
+# Go compiled binaries
+gemini-watermark-remover
+free-gemini-api
+*.exe
+*.test
+*.prof
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
