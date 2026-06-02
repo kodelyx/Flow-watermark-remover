@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -315,26 +316,40 @@ func removeWatermarkFromVideo(videoPath string) error {
 	tempOut := absPath + ".tmp.mp4"
 	defer os.Remove(tempOut)
 
-	// FFMPEG Read command: Decode frames to raw yuv420p on stdout (using VideoToolbox HW decoder)
-	readCmd := exec.Command("ffmpeg", "-hwaccel", "videotoolbox", "-i", absPath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-v", "quiet", "-")
+	// Dynamic cross-platform FFmpeg hardware acceleration and encoding settings
+	var readArgs []string
+	var encoderArgs []string
+
+	if runtime.GOOS == "darwin" {
+		// macOS: Use hardware-accelerated VideoToolbox decoding and encoding
+		readArgs = []string{"-hwaccel", "videotoolbox", "-i", absPath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-v", "quiet", "-"}
+		encoderArgs = []string{"-c:v", "h264_videotoolbox", "-b:v", "4000k"}
+	} else {
+		// Windows/Linux fallback: Use standard CPU-based H.264 decoding and encoding
+		readArgs = []string{"-i", absPath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-v", "quiet", "-"}
+		encoderArgs = []string{"-c:v", "libx264", "-preset", "fast", "-crf", "18"}
+	}
+
+	// FFMPEG Read command
+	readCmd := exec.Command("ffmpeg", readArgs...)
 	stdout, err := readCmd.StdoutPipe()
 	if err != nil {
 		return err
 	}
 
-	// FFMPEG Write command: Encode yuv420p frames back into H.264 mp4, copying audio from original (using VideoToolbox HW encoder)
-	writeCmd := exec.Command("ffmpeg", "-y",
+	// FFMPEG Write command
+	writeArgs := []string{
+		"-y",
 		"-f", "rawvideo", "-pix_fmt", "yuv420p",
 		"-s", fmt.Sprintf("%dx%d", width, height), "-r", fps,
 		"-i", "-",
 		"-i", absPath, // Re-read for audio mapping
 		"-map", "0:v", "-map", "1:a?",
-		"-c:v", "h264_videotoolbox", "-b:v", "4000k",
-		"-c:a", "copy",
-		"-movflags", "+faststart",
-		"-v", "quiet",
-		tempOut,
-	)
+	}
+	writeArgs = append(writeArgs, encoderArgs...)
+	writeArgs = append(writeArgs, "-c:a", "copy", "-movflags", "+faststart", "-v", "quiet", tempOut)
+
+	writeCmd := exec.Command("ffmpeg", writeArgs...)
 
 	stdin, err := writeCmd.StdinPipe()
 	if err != nil {
