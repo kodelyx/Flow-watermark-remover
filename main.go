@@ -18,7 +18,7 @@ const indexHTML = `<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Native Watermark Remover</title>
+    <title>Watermark Remover</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -76,7 +76,7 @@ const indexHTML = `<!DOCTYPE html>
 
         .container {
             width: 100%;
-            max-width: 580px;
+            max-width: 620px;
             z-index: 10;
         }
 
@@ -162,22 +162,61 @@ const indexHTML = `<!DOCTYPE html>
             display: none;
         }
 
-        .file-selected {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 12px;
-            padding: 1rem;
+        /* File List Container */
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
             margin-bottom: 1.5rem;
-            display: none;
+            max-height: 280px;
+            overflow-y: auto;
+            padding-right: 4px;
+            text-align: left;
+        }
+
+        .file-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .file-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.01);
+            border-radius: 3px;
+        }
+        .file-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        .file-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .file-item {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            display: flex;
             align-items: center;
             justify-content: space-between;
-            text-align: left;
+            transition: all 0.2s ease;
+        }
+
+        .file-item:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+            background: rgba(255, 255, 255, 0.06);
         }
 
         .file-info {
             display: flex;
             align-items: center;
             gap: 0.75rem;
+            overflow: hidden;
+            flex: 1;
+            margin-right: 1rem;
+        }
+
+        .file-meta {
+            display: flex;
+            flex-direction: column;
             overflow: hidden;
         }
 
@@ -190,23 +229,96 @@ const indexHTML = `<!DOCTYPE html>
         }
 
         .file-size {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.1rem;
+        }
+
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            white-space: nowrap;
+        }
+
+        .status-pending {
+            background: rgba(255, 255, 255, 0.06);
             color: var(--text-muted);
         }
 
-        .remove-btn {
-            background: none;
-            border: none;
-            color: #ef4444;
-            cursor: pointer;
-            font-size: 1.1rem;
-            display: flex;
-            align-items: center;
-            transition: opacity 0.2s;
+        .status-processing {
+            background: rgba(99, 102, 241, 0.15);
+            color: #a5b4fc;
         }
 
-        .remove-btn:hover {
-            opacity: 0.8;
+        .status-success {
+            background: rgba(34, 197, 94, 0.15);
+            color: #86efac;
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+        }
+
+        .item-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .item-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            padding: 0.25rem;
+            transition: all 0.2s;
+        }
+
+        .remove-item-btn {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .remove-item-btn:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .download-item-btn {
+            color: #86efac;
+            background: rgba(34, 197, 94, 0.1);
+            padding: 0.35rem 0.6rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            gap: 0.25rem;
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .download-item-btn:hover {
+            background: rgba(34, 197, 94, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .inline-spinner {
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: currentColor;
+            animation: spin 1s linear infinite;
         }
 
         .btn {
@@ -223,6 +335,10 @@ const indexHTML = `<!DOCTYPE html>
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
         }
 
         .btn:hover {
@@ -245,22 +361,14 @@ const indexHTML = `<!DOCTYPE html>
         /* Loading Spinner */
         .spinner {
             display: none;
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             border: 3px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
             border-top-color: white;
             animation: spin 1s linear infinite;
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            margin-left: -12px;
-            margin-top: -12px;
         }
 
-        .btn.loading {
-            color: transparent;
-        }
         .btn.loading .spinner {
             display: block;
         }
@@ -312,24 +420,17 @@ const indexHTML = `<!DOCTYPE html>
             <form id="uploadForm">
                 <div class="dropzone" id="dropzone">
                     <span class="dropzone-icon">📥</span>
-                    <span class="dropzone-text">Drag & drop your file here, or <span style="color:#818cf8; text-decoration: underline;">browse</span></span>
+                    <span class="dropzone-text">Drag & drop your files here, or <span style="color:#818cf8; text-decoration: underline;">browse</span></span>
                     <span class="dropzone-subtext">Supports PNG, JPG, JPEG, MP4</span>
-                    <input type="file" id="fileInput" name="file" accept=".png,.jpg,.jpeg,.mp4">
+                    <input type="file" id="fileInput" name="file" accept=".png,.jpg,.jpeg,.mp4" multiple>
                 </div>
 
-                <div class="file-selected" id="fileSelected">
-                    <div class="file-info">
-                        <span id="fileIcon" style="font-size:1.5rem;">📄</span>
-                        <div>
-                            <div class="file-name" id="fileName">image.png</div>
-                            <div class="file-size" id="fileSize">1.2 MB</div>
-                        </div>
-                    </div>
-                    <button type="button" class="remove-btn" id="removeBtn">✕</button>
+                <div class="file-list" id="fileList">
+                    <!-- Files will be dynamically inserted here -->
                 </div>
 
                 <button type="submit" class="btn" id="submitBtn" disabled>
-                    <span class="btn-text">Clean Watermark</span>
+                    <span id="btnText">Clean Watermark</span>
                     <div class="spinner"></div>
                 </button>
             </form>
@@ -342,16 +443,13 @@ const indexHTML = `<!DOCTYPE html>
     <script>
         const dropzone = document.getElementById('dropzone');
         const fileInput = document.getElementById('fileInput');
-        const fileSelected = document.getElementById('fileSelected');
-        const fileName = document.getElementById('fileName');
-        const fileSize = document.getElementById('fileSize');
-        const fileIcon = document.getElementById('fileIcon');
-        const removeBtn = document.getElementById('removeBtn');
+        const fileList = document.getElementById('fileList');
         const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
         const uploadForm = document.getElementById('uploadForm');
         const alertBox = document.getElementById('alertBox');
         
-        let selectedFile = null;
+        let selectedFiles = [];
 
         // Click zone triggers browse
         dropzone.addEventListener('click', () => fileInput.click());
@@ -376,14 +474,14 @@ const indexHTML = `<!DOCTYPE html>
             const dt = e.dataTransfer;
             const files = dt.files;
             if (files.length > 0) {
-                handleFile(files[0]);
+                handleFiles(files);
             }
         });
 
         // Choose file from file picker
         fileInput.addEventListener('change', () => {
             if (fileInput.files.length > 0) {
-                handleFile(fileInput.files[0]);
+                handleFiles(fileInput.files);
             }
         });
 
@@ -396,40 +494,120 @@ const indexHTML = `<!DOCTYPE html>
             return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
         }
 
-        function handleFile(file) {
-            const name = file.name.toLowerCase();
+        function handleFiles(files) {
+            alertBox.style.display = 'none';
             const allowedExts = ['.png', '.jpg', '.jpeg', '.mp4'];
-            const isValid = allowedExts.some(ext => name.endsWith(ext));
 
-            if (!isValid) {
-                showAlert('Invalid file type. Please upload a PNG, JPG, JPEG, or MP4.');
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const name = file.name.toLowerCase();
+                const isValid = allowedExts.some(ext => name.endsWith(ext));
+
+                if (!isValid) {
+                    showAlert('Some files were skipped. Only PNG, JPG, JPEG, and MP4 are supported.');
+                    continue;
+                }
+
+                // Check if file is already added
+                const alreadyExists = selectedFiles.some(f => f.file.name === file.name && f.file.size === file.size);
+                if (alreadyExists) continue;
+
+                selectedFiles.push({
+                    id: 'file-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                    file: file,
+                    status: 'pending', // pending, processing, success, error
+                    progress: 0,
+                    downloadUrl: null,
+                    error: null
+                });
+            }
+
+            renderFiles();
+            updateSubmitButton();
+        }
+
+        function removeFile(id) {
+            selectedFiles = selectedFiles.filter(f => f.id !== id);
+            renderFiles();
+            updateSubmitButton();
+        }
+
+        function updateSubmitButton() {
+            const pendingCount = selectedFiles.filter(f => f.status === 'pending').length;
+            const processingCount = selectedFiles.filter(f => f.status === 'processing').length;
+            
+            if (processingCount > 0) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('loading');
+                btnText.textContent = 'Processing (' + processingCount + '/' + selectedFiles.length + ')';
+            } else if (pendingCount > 0) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('loading');
+                btnText.textContent = 'Clean ' + pendingCount + ' File' + (pendingCount > 1 ? 's' : '');
+            } else {
+                submitBtn.disabled = true;
+                submitBtn.classList.remove('loading');
+                btnText.textContent = 'Clean Watermark';
+            }
+        }
+
+        function renderFiles() {
+            if (selectedFiles.length === 0) {
+                fileList.innerHTML = '';
+                dropzone.style.display = 'block';
                 return;
             }
 
-            alertBox.style.display = 'none';
-            selectedFile = file;
-            fileName.textContent = file.name;
-            fileSize.textContent = formatBytes(file.size);
-
-            if (name.endsWith('.mp4')) {
-                fileIcon.textContent = '🎥';
-            } else {
-                fileIcon.textContent = '🖼️';
-            }
-
             dropzone.style.display = 'none';
-            fileSelected.style.display = 'flex';
-            submitBtn.disabled = false;
-        }
 
-        // Clear chosen file
-        removeBtn.addEventListener('click', () => {
-            selectedFile = null;
-            fileInput.value = '';
-            dropzone.style.display = 'block';
-            fileSelected.style.display = 'none';
-            submitBtn.disabled = true;
-        });
+            let html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">' +
+                       '<span style="font-size: 0.9rem; font-weight: 600; color: var(--text-muted);">' + selectedFiles.length + ' file' + (selectedFiles.length > 1 ? 's' : '') + ' selected</span>' +
+                       '<button type="button" onclick="document.getElementById(\'fileInput\').click()" style="background: none; border: none; color: #818cf8; font-size: 0.85rem; font-weight: 600; cursor: pointer; text-decoration: underline;">+ Add More</button>' +
+                       '</div>';
+
+            selectedFiles.forEach(item => {
+                const isVideo = item.file.name.toLowerCase().endsWith('.mp4');
+                const fileIcon = isVideo ? '🎥' : '🖼️';
+                
+                let statusBadgeHTML = '';
+                let actionHTML = '';
+
+                if (item.status === 'pending') {
+                    statusBadgeHTML = '<span class="status-badge status-pending">Pending</span>';
+                    actionHTML = '<button type="button" class="item-btn remove-item-btn" onclick="removeFile(\'' + item.id + '\')" title="Remove">✕</button>';
+                } else if (item.status === 'processing') {
+                    statusBadgeHTML = '<span class="status-badge status-processing"><span class="inline-spinner"></span> Cleaning</span>';
+                    actionHTML = '';
+                } else if (item.status === 'success') {
+                    statusBadgeHTML = '<span class="status-badge status-success">✓ Cleaned</span>';
+                    const origName = item.file.name;
+                    const dotIdx = origName.lastIndexOf('.');
+                    const cleanName = origName.substring(0, dotIdx) + '_clean' + origName.substring(dotIdx);
+                    
+                    actionHTML = '<a href="' + item.downloadUrl + '" download="' + cleanName + '" class="download-item-btn">📥 Download</a>' +
+                                 '<button type="button" class="item-btn remove-item-btn" onclick="removeFile(\'' + item.id + '\')" title="Clear">✕</button>';
+                } else if (item.status === 'error') {
+                    statusBadgeHTML = '<span class="status-badge status-error" title="' + (item.error || 'Error') + '">⚠ Failed</span>';
+                    actionHTML = '<button type="button" class="item-btn remove-item-btn" onclick="removeFile(\'' + item.id + '\')" title="Remove">✕</button>';
+                }
+
+                html += '<div class="file-item" id="' + item.id + '">' +
+                        '<div class="file-info">' +
+                        '<span style="font-size: 1.5rem;">' + fileIcon + '</span>' +
+                        '<div class="file-meta">' +
+                        '<span class="file-name" title="' + item.file.name + '">' + item.file.name + '</span>' +
+                        '<span class="file-size">' + formatBytes(item.file.size) + '</span>' +
+                        '</div>' +
+                        '</div>' +
+                        '<div class="item-actions">' +
+                        statusBadgeHTML +
+                        actionHTML +
+                        '</div>' +
+                        '</div>';
+            });
+
+            fileList.innerHTML = html;
+        }
 
         function showAlert(msg) {
             alertBox.textContent = msg;
@@ -439,47 +617,62 @@ const indexHTML = `<!DOCTYPE html>
         // Form Submit
         uploadForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (!selectedFile) return;
+            
+            const pendingItems = selectedFiles.filter(item => item.status === 'pending');
+            if (pendingItems.length === 0) return;
 
-            submitBtn.disabled = true;
-            submitBtn.classList.add('loading');
+            pendingItems.forEach(item => {
+                item.status = 'processing';
+            });
+            renderFiles();
+            updateSubmitButton();
+
             alertBox.style.display = 'none';
 
-            const formData = new FormData();
-            formData.append('file', selectedFile);
+            const uploadPromises = pendingItems.map(async (item) => {
+                const formData = new FormData();
+                formData.append('file', item.file);
 
-            try {
-                const response = await fetch('/remove-watermark', {
-                    method: 'POST',
-                    body: formData
-                });
+                try {
+                    const response = await fetch('/remove-watermark', {
+                        method: 'POST',
+                        body: formData
+                    });
 
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(errText || 'Failed to remove watermark');
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        throw new Error(errText || 'Failed to remove watermark');
+                    }
+
+                    const blob = await response.blob();
+                    item.downloadUrl = window.URL.createObjectURL(blob);
+                    item.status = 'success';
+                    
+                    const a = document.createElement('a');
+                    a.href = item.downloadUrl;
+                    const origName = item.file.name;
+                    const dotIdx = origName.lastIndexOf('.');
+                    const cleanName = origName.substring(0, dotIdx) + '_clean' + origName.substring(dotIdx);
+                    a.download = cleanName;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+
+                } catch (err) {
+                    item.status = 'error';
+                    item.error = err.message;
+                    console.error('Error processing file:', item.file.name, err);
                 }
+            });
 
-                // Download cleaned file
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                
-                // Keep same base filename but append _clean
-                const origName = selectedFile.name;
-                const dotIdx = origName.lastIndexOf('.');
-                const cleanName = origName.substring(0, dotIdx) + '_clean' + origName.substring(dotIdx);
-                
-                a.download = cleanName;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                a.remove();
-            } catch (err) {
-                showAlert('Error: ' + err.message);
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.classList.remove('loading');
+            await Promise.all(uploadPromises);
+            
+            renderFiles();
+            updateSubmitButton();
+
+            const failedCount = selectedFiles.filter(item => item.status === 'error').length;
+            if (failedCount > 0) {
+                showAlert('Finished processing. ' + failedCount + ' file' + (failedCount > 1 ? 's' : '') + ' failed to clean.');
             }
         });
     </script>
@@ -506,10 +699,93 @@ func main() {
 func runCLIMode(inputPath, outputPath string) {
 	log.Printf("🚀 Running CLI Watermark Remover on: %s", inputPath)
 
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		log.Fatalf("❌ Error: Input file does not exist: %s", inputPath)
+	info, err := os.Stat(inputPath)
+	if os.IsNotExist(err) {
+		log.Fatalf("❌ Error: Input file or directory does not exist: %s", inputPath)
 	}
 
+	if info.IsDir() {
+		// 1. Process directory of files
+		files, err := os.ReadDir(inputPath)
+		if err != nil {
+			log.Fatalf("❌ Failed to read input directory: %v", err)
+		}
+
+		// Ensure output directory exists if provided
+		if outputPath != "" {
+			err = os.MkdirAll(outputPath, 0755)
+			if err != nil {
+				log.Fatalf("❌ Failed to create output directory: %v", err)
+			}
+		}
+
+		processedCount := 0
+		startTime := time.Now()
+
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+
+			filename := file.Name()
+			ext := strings.ToLower(filepath.Ext(filename))
+			var fileType string
+			if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
+				fileType = "image"
+			} else if ext == ".mp4" {
+				fileType = "video"
+			} else {
+				continue // Skip unsupported files
+			}
+
+			inputFile := filepath.Join(inputPath, filename)
+			var outputFile string
+			if outputPath != "" {
+				outputFile = filepath.Join(outputPath, "cleaned_"+filename)
+			} else {
+				outputFile = inputFile // In-place
+			}
+
+			absInput, err := filepath.Abs(inputFile)
+			if err != nil {
+				log.Printf("⚠️ Failed to parse absolute path for %s: %v", filename, err)
+				continue
+			}
+
+			absOutput, err := filepath.Abs(outputFile)
+			if err != nil {
+				log.Printf("⚠️ Failed to parse absolute output path for %s: %v", filename, err)
+				continue
+			}
+
+			if absOutput != absInput {
+				err = copyFile(absInput, absOutput)
+				if err != nil {
+					log.Printf("⚠️ Failed to copy file %s: %v", filename, err)
+					continue
+				}
+			}
+
+			fileStartTime := time.Now()
+			log.Printf("🧹 Removing watermark from %s (%s)...", filename, fileType)
+			err = RemoveWatermark(absOutput, fileType)
+			if err != nil {
+				log.Printf("❌ Failed to process %s: %v", filename, err)
+				if absOutput != absInput {
+					os.Remove(absOutput) // clean up failed output
+				}
+				continue
+			}
+
+			log.Printf("✨ Cleaned %s in %.2fs", filename, time.Since(fileStartTime).Seconds())
+			processedCount++
+		}
+
+		log.Printf("🎉 Finished batch processing! Cleaned %d files in %.2fs", processedCount, time.Since(startTime).Seconds())
+		return
+	}
+
+	// 2. Single file processing
 	ext := strings.ToLower(filepath.Ext(inputPath))
 	var fileType string
 	if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
