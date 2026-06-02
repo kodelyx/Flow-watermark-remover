@@ -1,6 +1,6 @@
 # 🔓 Gemini Watermark Remover
 
-Zero-dependency Go engine to remove Google Gemini and Veo watermarks from images and videos.
+Zero-dependency Go engine to remove Google Gemini watermarks from images and videos.
 
 ## 🛠️ Prerequisites
 - **FFmpeg** (Required for video processing only) must be installed and added to your `PATH`.
