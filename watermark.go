@@ -315,16 +315,16 @@ func removeWatermarkFromVideo(videoPath string) error {
 	tempOut := absPath + ".tmp.mp4"
 	defer os.Remove(tempOut)
 
-	// FFMPEG Read command: Decode frames to raw BGR24 on stdout
-	readCmd := exec.Command("ffmpeg", "-i", absPath, "-f", "rawvideo", "-pix_fmt", "bgr24", "-v", "quiet", "-")
+	// FFMPEG Read command: Decode frames to raw yuv420p on stdout
+	readCmd := exec.Command("ffmpeg", "-i", absPath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-v", "quiet", "-")
 	stdout, err := readCmd.StdoutPipe()
 	if err != nil {
 		return err
 	}
 
-	// FFMPEG Write command: Encode BGR24 frames back into H.264 mp4, copying audio from original
+	// FFMPEG Write command: Encode yuv420p frames back into H.264 mp4, copying audio from original
 	writeCmd := exec.Command("ffmpeg", "-y",
-		"-f", "rawvideo", "-pix_fmt", "bgr24",
+		"-f", "rawvideo", "-pix_fmt", "yuv420p",
 		"-s", fmt.Sprintf("%dx%d", width, height), "-r", fps,
 		"-i", "-",
 		"-i", absPath, // Re-read for audio mapping
@@ -348,7 +348,9 @@ func removeWatermarkFromVideo(videoPath string) error {
 		return fmt.Errorf("ffmpeg writer start failed: %w", err)
 	}
 
-	frameSize := width * height * 3 // BGR24
+	ySize := width * height
+	uvSize := (width / 2) * (height / 2)
+	frameSize := ySize + 2*uvSize // yuv420p size (W * H * 1.5)
 	frameBuf := make([]byte, frameSize)
 
 	for {
@@ -360,7 +362,7 @@ func removeWatermarkFromVideo(videoPath string) error {
 			break
 		}
 
-		// Apply watermark reverse blending directly in BGR24 byte slice
+		// Apply YUV watermark reverse blending directly in raw yuv420p buffer
 		for dy := 0; dy < config.LogoSize; dy++ {
 			py := config.Y + dy
 			if py < 0 || py >= height {
@@ -384,24 +386,38 @@ func removeWatermarkFromVideo(videoPath string) error {
 					scaledAlpha = maxAlpha
 				}
 
-				// Offset inside raw BGR24 frame byte slice
-				pixelOffset := (py*width + px) * 3
-
-				b := frameBuf[pixelOffset]
-				g := frameBuf[pixelOffset+1]
-				r := frameBuf[pixelOffset+2]
-
-				// Solve original = (watermarked - alpha * 255.0) / (1 - alpha)
 				oneMinusAlpha := 1.0 - float64(scaledAlpha)
 
-				newB := (float64(b) - float64(scaledAlpha)*logoValue) / oneMinusAlpha
-				newG := (float64(g) - float64(scaledAlpha)*logoValue) / oneMinusAlpha
-				newR := (float64(r) - float64(scaledAlpha)*logoValue) / oneMinusAlpha
+				// 1. Process Y channel (Luminance)
+				yOffset := py*width + px
+				if yOffset < ySize {
+					yVal := float64(frameBuf[yOffset])
+					// Solve original = (watermarked - alpha * 235.0) / (1 - alpha)
+					newY := (yVal - float64(scaledAlpha)*235.0) / oneMinusAlpha
+					frameBuf[yOffset] = byte(math.Min(math.Max(newY, 0), 255))
+				}
 
-				// Set BGR byte values, clamped to [0, 255]
-				frameBuf[pixelOffset] = byte(math.Min(math.Max(newB, 0), 255))
-				frameBuf[pixelOffset+1] = byte(math.Min(math.Max(newG, 0), 255))
-				frameBuf[pixelOffset+2] = byte(math.Min(math.Max(newR, 0), 255))
+				// 2. Process U & V channels (Chroma, subsampled 2x2)
+				if py%2 == 0 && px%2 == 0 {
+					uvRow := py / 2
+					uvCol := px / 2
+					uvOffset := uvRow*(width/2) + uvCol
+
+					uOffset := ySize + uvOffset
+					vOffset := ySize + uvSize + uvOffset
+
+					if uOffset < ySize+uvSize {
+						uVal := float64(frameBuf[uOffset])
+						newU := (uVal-128.0)/oneMinusAlpha + 128.0
+						frameBuf[uOffset] = byte(math.Min(math.Max(newU, 0), 255))
+					}
+
+					if vOffset < frameSize {
+						vVal := float64(frameBuf[vOffset])
+						newV := (vVal-128.0)/oneMinusAlpha + 128.0
+						frameBuf[vOffset] = byte(math.Min(math.Max(newV, 0), 255))
+					}
+				}
 			}
 		}
 
