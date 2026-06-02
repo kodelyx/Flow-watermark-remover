@@ -305,7 +305,7 @@ const indexHTML = `<!DOCTYPE html>
                 <span class="logo-icon">✨</span>
             </div>
             <h1>Watermark Remover</h1>
-            <p class="subtitle">Remove Google Gemini watermarks natively from your images & videos</p>
+            <p class="subtitle">Instantly remove watermarks from images & videos</p>
 
             <div id="alertBox" class="alert alert-error"></div>
 
@@ -335,7 +335,7 @@ const indexHTML = `<!DOCTYPE html>
             </form>
         </div>
         <div class="footer">
-            Native Go & FFMPEG Engine • Premium Edition
+            Premium Edition
         </div>
     </div>
 
