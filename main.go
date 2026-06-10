@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -15,7 +14,6 @@ import (
 	"io"
 	"log"
 	"math"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,23 +22,20 @@ import (
 	"time"
 )
 
-//go:embed index.html
-var indexHTML string
-
 func main() {
 	// Parse CLI Arguments
 	inputFlag := flag.String("i", "", "Input path of image or video to remove watermark")
 	outputFlag := flag.String("o", "", "Output path of image or video (optional, defaults to overwrite in-place)")
 	flag.Parse()
 
-	// 1. CLI Mode
+	// CLI Mode
 	if *inputFlag != "" {
 		runCLIMode(*inputFlag, *outputFlag)
 		return
 	}
 
-	// 2. HTTP Server Mode (if no input flag is provided)
-	runServerMode()
+	// Print usage if no arguments are provided
+	flag.Usage()
 }
 
 func runCLIMode(inputPath, outputPath string) {
@@ -185,120 +180,6 @@ func runCLIMode(inputPath, outputPath string) {
 	}
 
 	log.Printf("✨ Success! Cleaned file: %s (Time: %.2fs)", absOutput, time.Since(startTime).Seconds())
-}
-
-func runServerMode() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8000"
-	}
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(indexHTML))
-	})
-
-	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status": "ok", "service": "watermark-remover"}`))
-	})
-
-	http.HandleFunc("/remove-watermark", handleRemoveWatermark)
-
-	fmt.Println("====================================================")
-	fmt.Printf("✨ Native Watermark Remover Server Started ✨\n")
-	fmt.Printf("Mode: HTTP API + Web Playground\n")
-	fmt.Printf("Port: %s\n", port)
-	fmt.Printf("URL:  http://localhost:%s\n", port)
-	fmt.Println("====================================================")
-
-	log.Fatal(http.ListenAndServe(":"+port, nil))
-}
-
-func handleRemoveWatermark(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Parse multipart form-data (Max 50MB)
-	err := r.ParseMultipartForm(50 * 1024 * 1024)
-	if err != nil {
-		http.Error(w, "Failed to parse form: file too large (Max 50MB)", http.StatusBadRequest)
-		return
-	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "Missing 'file' field in request", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	var fileType string
-	if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
-		fileType = "image"
-	} else if ext == ".mp4" {
-		fileType = "video"
-	} else {
-		http.Error(w, "Unsupported file format. Must be .png, .jpg, .jpeg, or .mp4", http.StatusBadRequest)
-		return
-	}
-
-	// Save upload to temporary file
-	tempDir := filepath.Join(".", "output", ".temp")
-	os.MkdirAll(tempDir, 0755)
-	defer os.RemoveAll(tempDir) // cleanup temp files immediately after request finishes
-
-	tempFile, err := os.CreateTemp(tempDir, "watermark_*"+ext)
-	if err != nil {
-		http.Error(w, "Internal server error creating workspace", http.StatusInternalServerError)
-		return
-	}
-	tempPath := tempFile.Name()
-	defer os.Remove(tempPath)
-	defer tempFile.Close()
-
-	_, err = io.Copy(tempFile, file)
-	if err != nil {
-		http.Error(w, "Failed to read uploaded file", http.StatusInternalServerError)
-		return
-	}
-	tempFile.Close() // close file handle so RemoveWatermark can process it safely
-
-	// Perform watermark removal in-place on the temp file
-	log.Printf("🧹 Removing watermark from uploaded %s (%s)...", header.Filename, fileType)
-	err = RemoveWatermark(tempPath, fileType)
-	if err != nil {
-		log.Printf("❌ Watermark removal failed: %v", err)
-		http.Error(w, "Failed to process watermark: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Return cleaned file
-	cleanedFile, err := os.Open(tempPath)
-	if err != nil {
-		http.Error(w, "Failed to read processed file", http.StatusInternalServerError)
-		return
-	}
-	defer cleanedFile.Close()
-
-	// Set original content type
-	contentType := header.Header.Get("Content-Type")
-	if contentType != "" {
-		w.Header().Set("Content-Type", contentType)
-	}
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"cleaned_%s\"", header.Filename))
-
-	_, err = io.Copy(w, cleanedFile)
-	if err != nil {
-		log.Printf("❌ Failed to stream processed file to client: %v", err)
-	}
 }
 
 // copyFile is a helper to copy file content from src to dst
@@ -470,6 +351,194 @@ func RemoveWatermark(savePath string, fileType string) error {
 	return fmt.Errorf("unsupported watermark file type: %s", ext)
 }
 
+// FindWatermarkOffset locates the watermark coordinates in an image using cross-correlation template matching
+func FindWatermarkOffset(img image.Image, alphaMap []float32, logoSize int, standardX, standardY int, radius int) (int, int, float64) {
+	bounds := img.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+
+	bestX, bestY := standardX, standardY
+
+	if width < 200 || height < 200 {
+		return bestX, bestY, 0.0
+	}
+
+	// Search range of +/- radius pixels around standard guess
+	minX := standardX - radius
+	maxX := standardX + radius
+	minY := standardY - radius
+	maxY := standardY + radius
+
+	if minX < 0 {
+		minX = 0
+	}
+	if maxX > width-logoSize {
+		maxX = width - logoSize
+	}
+	if minY < 0 {
+		minY = 0
+	}
+	if maxY > height-logoSize {
+		maxY = height - logoSize
+	}
+
+	sumAlpha := 0.0
+	for _, a := range alphaMap {
+		sumAlpha += float64(a)
+	}
+	meanAlpha := sumAlpha / float64(logoSize*logoSize)
+
+	varAlpha := 0.0
+	for _, a := range alphaMap {
+		diff := float64(a) - meanAlpha
+		varAlpha += diff * diff
+	}
+
+	bestScore := -1.0
+	patchGray := make([]float64, logoSize*logoSize)
+
+	for cy := minY; cy <= maxY; cy++ {
+		for cx := minX; cx <= maxX; cx++ {
+			sumPixel := 0.0
+			for dy := 0; dy < logoSize; dy++ {
+				for dx := 0; dx < logoSize; dx++ {
+					r, g, b, _ := img.At(bounds.Min.X+cx+dx, bounds.Min.Y+cy+dy).RGBA()
+					// Standard grayscale formula (OpenCV COLOR_BGR2GRAY equivalent)
+					gray := (0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)) / 257.0
+					patchGray[dy*logoSize+dx] = gray
+					sumPixel += gray
+				}
+			}
+			meanPixel := sumPixel / float64(logoSize*logoSize)
+
+			varPixel := 0.0
+			cov := 0.0
+			for i := 0; i < logoSize*logoSize; i++ {
+				diffPixel := patchGray[i] - meanPixel
+				diffAlpha := float64(alphaMap[i]) - meanAlpha
+				varPixel += diffPixel * diffPixel
+				cov += diffPixel * diffAlpha
+			}
+
+			score := 0.0
+			if varPixel > 0.0001 && varAlpha > 0.0001 {
+				score = cov / math.Sqrt(varPixel*varAlpha)
+			}
+
+			if score > bestScore {
+				bestScore = score
+				bestX, bestY = cx, cy
+			}
+		}
+	}
+	return bestX, bestY, bestScore
+}
+
+// FindWatermarkOffsetVideo locates the watermark coordinates in raw Y channel using cross-correlation template matching
+func FindWatermarkOffsetVideo(yChannel []byte, width, height int, alphaMap []float32, logoSize int, standardX, standardY int) (int, int, float64) {
+	bestX, bestY := standardX, standardY
+
+	minX := standardX - 80
+	maxX := standardX + 80
+	minY := standardY - 80
+	maxY := standardY + 80
+
+	if minX < 0 {
+		minX = 0
+	}
+	if maxX > width-logoSize {
+		maxX = width - logoSize
+	}
+	if minY < 0 {
+		minY = 0
+	}
+	if maxY > height-logoSize {
+		maxY = height - logoSize
+	}
+
+	sumAlpha := 0.0
+	for _, a := range alphaMap {
+		sumAlpha += float64(a)
+	}
+	meanAlpha := sumAlpha / float64(logoSize*logoSize)
+
+	varAlpha := 0.0
+	for _, a := range alphaMap {
+		diff := float64(a) - meanAlpha
+		varAlpha += diff * diff
+	}
+
+	bestScore := -1.0
+	patchGray := make([]float64, logoSize*logoSize)
+
+	for cy := minY; cy <= maxY; cy++ {
+		for cx := minX; cx <= maxX; cx++ {
+			sumPixel := 0.0
+			for dy := 0; dy < logoSize; dy++ {
+				for dx := 0; dx < logoSize; dx++ {
+					yVal := float64(yChannel[(cy+dy)*width+(cx+dx)])
+					patchGray[dy*logoSize+dx] = yVal
+					sumPixel += yVal
+				}
+			}
+			meanPixel := sumPixel / float64(logoSize*logoSize)
+
+			varPixel := 0.0
+			cov := 0.0
+			for i := 0; i < logoSize*logoSize; i++ {
+				diffPixel := patchGray[i] - meanPixel
+				diffAlpha := float64(alphaMap[i]) - meanAlpha
+				varPixel += diffPixel * diffPixel
+				cov += diffPixel * diffAlpha
+			}
+
+			score := 0.0
+			if varPixel > 0.0001 && varAlpha > 0.0001 {
+				score = cov / math.Sqrt(varPixel*varAlpha)
+			}
+
+			if score > bestScore {
+				bestScore = score
+				bestX, bestY = cx, cy
+			}
+		}
+	}
+	return bestX, bestY, bestScore
+}
+
+func v2SmallConfigFromDims(w, h int) (margin, logoSize int) {
+	longSide := w
+	if h > longSide {
+		longSide = h
+	}
+	shortSide := w
+	if h < shortSide {
+		shortSide = h
+	}
+
+	var sourceLongDim float64
+	if shortSide >= 566 {
+		sourceLongDim = 2752.0
+	} else if shortSide >= 550 {
+		sourceLongDim = 2816.0
+	} else {
+		sourceLongDim = 2848.0
+	}
+
+	scale := float64(longSide) / sourceLongDim
+	margin = int(math.Round(192.0 * scale))
+	return margin, 36
+}
+
+func getAlphaMapForSize(size int) ([]float32, error) {
+	if size == 48 {
+		return alphaCache48, nil
+	}
+	if size == 96 {
+		return alphaCache96, nil
+	}
+	return loadAlphaMap(size)
+}
+
 // removeWatermarkFromImage performs native Go reverse-alpha editing on static images
 func removeWatermarkFromImage(imagePath string) error {
 	file, err := os.Open(imagePath)
@@ -486,35 +555,100 @@ func removeWatermarkFromImage(imagePath string) error {
 
 	bounds := img.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
-	config := DetectWatermarkConfig(width, height, false)
 
-	// Fetch cached alpha map
-	alphaMap := alphaCache48
-	if config.LogoSize == 96 {
-		alphaMap = alphaCache96
+	// Define Candidates
+	type Candidate struct {
+		logoSize int
+		x        int
+		y        int
+		variant  string // "V1" or "V2"
 	}
-	if len(alphaMap) == 0 {
-		return fmt.Errorf("alpha map cache for size %d is empty", config.LogoSize)
+
+	var candidates []Candidate
+	isLarge := width > 1024 && height > 1024
+
+	if isLarge {
+		// V2 Large
+		candidates = append(candidates, Candidate{
+			logoSize: 96,
+			x:        width - 192 - 96,
+			y:        height - 192 - 96,
+			variant:  "V2",
+		})
+		// V1 Large
+		candidates = append(candidates, Candidate{
+			logoSize: 96,
+			x:        width - 64 - 96,
+			y:        height - 64 - 96,
+			variant:  "V1",
+		})
+	} else {
+		// V1 Small
+		candidates = append(candidates, Candidate{
+			logoSize: 48,
+			x:        width - 32 - 48,
+			y:        height - 32 - 48,
+			variant:  "V1",
+		})
+		// V2 Small
+		v2Margin, v2Logo := v2SmallConfigFromDims(width, height)
+		candidates = append(candidates, Candidate{
+			logoSize: v2Logo,
+			x:        width - v2Margin - v2Logo,
+			y:        height - v2Margin - v2Logo,
+			variant:  "V2",
+		})
 	}
+
+	var bestCand Candidate
+	bestX, bestY := 0, 0
+	bestScore := -1.0
+	var bestAlphaMap []float32
+
+	for _, cand := range candidates {
+		alphaMap, err := getAlphaMapForSize(cand.logoSize)
+		if err != nil {
+			log.Printf("⚠️ Warning: Failed to load alpha map for size %d: %v", cand.logoSize, err)
+			continue
+		}
+
+		cx, cy, score := FindWatermarkOffset(img, alphaMap, cand.logoSize, cand.x, cand.y, 4)
+		if score > bestScore {
+			bestScore = score
+			bestX, bestY = cx, cy
+			bestCand = cand
+			bestAlphaMap = alphaMap
+		}
+	}
+
+	// If the best score is below detection threshold (e.g. 0.25), we skip processing
+	const kDetectionThreshold = 0.25
+	if bestScore < kDetectionThreshold {
+		log.Printf("⚠️ No watermark detected (best score: %.2f), skipping image: %s", bestScore, imagePath)
+		return nil
+	}
+
+	log.Printf("🎯 Detected %s watermark (size: %d) at (%d, %d) with score %.4f",
+		bestCand.variant, bestCand.logoSize, bestX, bestY, bestScore)
 
 	// Create writable canvas
 	canvas := image.NewRGBA(bounds)
 	draw.Draw(canvas, bounds, img, bounds.Min, draw.Src)
 
 	// Apply math formula on watermark region
-	for dy := 0; dy < config.LogoSize; dy++ {
-		py := config.Y + dy
+	for dy := 0; dy < bestCand.logoSize; dy++ {
+		py := bestY + dy
 		if py < bounds.Min.Y || py >= bounds.Max.Y {
 			continue
 		}
 
-		for dx := 0; dx < config.LogoSize; dx++ {
-			px := config.X + dx
+		for dx := 0; dx < bestCand.logoSize; dx++ {
+			px := bestX + dx
 			if px < bounds.Min.X || px >= bounds.Max.X {
 				continue
 			}
 
-			alpha := alphaMap[dy*config.LogoSize+dx]
+			alpha := bestAlphaMap[dy*bestCand.logoSize+dx]
 			if alpha < alphaThreshold {
 				continue
 			}
@@ -670,6 +804,8 @@ func removeWatermarkFromVideo(videoPath string) error {
 	frameSize := ySize + 2*uvSize // yuv420p size (W * H * 1.5)
 	frameBuf := make([]byte, frameSize)
 
+	isOffsetFound := false
+
 	for {
 		_, err := io.ReadFull(stdout, frameBuf)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
@@ -679,60 +815,78 @@ func removeWatermarkFromVideo(videoPath string) error {
 			break
 		}
 
-		// Apply YUV watermark reverse blending directly in raw yuv420p buffer
-		for dy := 0; dy < config.LogoSize; dy++ {
-			py := config.Y + dy
-			if py < 0 || py >= height {
-				continue
+		if !isOffsetFound {
+			// Check if frame is too dark (e.g., black or fade-in)
+			sumY := 0.0
+			for i := 0; i < ySize; i++ {
+				sumY += float64(frameBuf[i])
 			}
+			meanY := sumY / float64(ySize)
 
-			for dx := 0; dx < config.LogoSize; dx++ {
-				px := config.X + dx
-				if px < 0 || px >= width {
+			if meanY >= 20.0 { // threshold for non-black frame
+				bestX, bestY, _ := FindWatermarkOffsetVideo(frameBuf[:ySize], width, height, alphaMap, config.LogoSize, config.X, config.Y)
+				config.X = bestX
+				config.Y = bestY
+				isOffsetFound = true
+			}
+		}
+
+		// Apply YUV watermark reverse blending directly in raw yuv420p buffer if offset is locked
+		if isOffsetFound {
+			for dy := 0; dy < config.LogoSize; dy++ {
+				py := config.Y + dy
+				if py < 0 || py >= height {
 					continue
 				}
 
-				alpha := alphaMap[dy*config.LogoSize+dx]
-				if alpha < alphaThreshold {
-					continue
-				}
-
-				// Scale down watermark intensity for videos
-				scaledAlpha := alpha * videoAlphaScale
-				if scaledAlpha > maxAlpha {
-					scaledAlpha = maxAlpha
-				}
-
-				oneMinusAlpha := 1.0 - float64(scaledAlpha)
-
-				// 1. Process Y channel (Luminance)
-				yOffset := py*width + px
-				if yOffset < ySize {
-					yVal := float64(frameBuf[yOffset])
-					// Solve original = (watermarked - alpha * 235.0) / (1 - alpha)
-					newY := (yVal - float64(scaledAlpha)*235.0) / oneMinusAlpha
-					frameBuf[yOffset] = byte(math.Min(math.Max(newY, 0), 255))
-				}
-
-				// 2. Process U & V channels (Chroma, subsampled 2x2)
-				if py%2 == 0 && px%2 == 0 {
-					uvRow := py / 2
-					uvCol := px / 2
-					uvOffset := uvRow*(width/2) + uvCol
-
-					uOffset := ySize + uvOffset
-					vOffset := ySize + uvSize + uvOffset
-
-					if uOffset < ySize+uvSize {
-						uVal := float64(frameBuf[uOffset])
-						newU := (uVal-128.0)/oneMinusAlpha + 128.0
-						frameBuf[uOffset] = byte(math.Min(math.Max(newU, 0), 255))
+				for dx := 0; dx < config.LogoSize; dx++ {
+					px := config.X + dx
+					if px < 0 || px >= width {
+						continue
 					}
 
-					if vOffset < frameSize {
-						vVal := float64(frameBuf[vOffset])
-						newV := (vVal-128.0)/oneMinusAlpha + 128.0
-						frameBuf[vOffset] = byte(math.Min(math.Max(newV, 0), 255))
+					alpha := alphaMap[dy*config.LogoSize+dx]
+					if alpha < alphaThreshold {
+						continue
+					}
+
+					// Scale down watermark intensity for videos
+					scaledAlpha := alpha * videoAlphaScale
+					if scaledAlpha > maxAlpha {
+						scaledAlpha = maxAlpha
+					}
+
+					oneMinusAlpha := 1.0 - float64(scaledAlpha)
+
+					// 1. Process Y channel (Luminance)
+					yOffset := py*width + px
+					if yOffset < ySize {
+						yVal := float64(frameBuf[yOffset])
+						// Solve original = (watermarked - alpha * 235.0) / (1 - alpha)
+						newY := (yVal - float64(scaledAlpha)*235.0) / oneMinusAlpha
+						frameBuf[yOffset] = byte(math.Min(math.Max(newY, 0), 255))
+					}
+
+					// 2. Process U & V channels (Chroma, subsampled 2x2)
+					if py%2 == 0 && px%2 == 0 {
+						uvRow := py / 2
+						uvCol := px / 2
+						uvOffset := uvRow*(width/2) + uvCol
+
+						uOffset := ySize + uvOffset
+						vOffset := ySize + uvSize + uvOffset
+
+						if uOffset < ySize+uvSize {
+							uVal := float64(frameBuf[uOffset])
+							newU := (uVal-128.0)/oneMinusAlpha + 128.0
+							frameBuf[uOffset] = byte(math.Min(math.Max(newU, 0), 255))
+						}
+
+						if vOffset < frameSize {
+							vVal := float64(frameBuf[vOffset])
+							newV := (vVal-128.0)/oneMinusAlpha + 128.0
+							frameBuf[vOffset] = byte(math.Min(math.Max(newV, 0), 255))
+						}
 					}
 				}
 			}
