@@ -824,10 +824,12 @@ func removeWatermarkFromVideo(videoPath string) error {
 			meanY := sumY / float64(ySize)
 
 			if meanY >= 20.0 { // threshold for non-black frame
-				bestX, bestY, _ := FindWatermarkOffsetVideo(frameBuf[:ySize], width, height, alphaMap, config.LogoSize, config.X, config.Y)
-				config.X = bestX
-				config.Y = bestY
-				isOffsetFound = true
+				bestX, bestY, score := FindWatermarkOffsetVideo(frameBuf[:ySize], width, height, alphaMap, config.LogoSize, config.X, config.Y)
+				if score >= 0.20 {
+					config.X = bestX
+					config.Y = bestY
+					isOffsetFound = true
+				}
 			}
 		}
 
