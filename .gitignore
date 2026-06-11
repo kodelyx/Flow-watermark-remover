@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+*.o
+*.a
+
+# Temp
+*.tmp
+*.log
+GeminiWatermarkTool-Video
