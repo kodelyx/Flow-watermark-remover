@@ -1,6 +1,6 @@
 # 🔷 Gemini Watermark Remover
 
-Remove Gemini / Veo watermarks from videos. Single binary, zero dependencies.
+Remove Gemini watermarks from videos. Single binary, zero dependencies.
 
 ## Demo
 
