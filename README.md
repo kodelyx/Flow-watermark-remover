@@ -28,19 +28,7 @@ for f in videos/*.mp4; do
 done
 ```
 
----
-
-## GPU Setup (macOS)
-
-```bash
-brew install vulkan-loader vulkan-headers molten-vk
-
-export VK_ICD_FILENAMES=/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json
-export VK_DRIVER_FILES=/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json
-export DYLD_LIBRARY_PATH=/opt/homebrew/opt/molten-vk/lib:/opt/homebrew/opt/vulkan-loader/lib
-```
-
-> Add these `export` lines to `~/.zshrc` for permanent GPU support.
+> 📖 **[Full Guide →](guide.md)** — GPU setup, flags, detailed instructions.
 
 ---
 
