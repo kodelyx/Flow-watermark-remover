@@ -13,11 +13,13 @@
 
 ---
 
-## ✨ Demo
+## 🎬 Demo
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/allenk/VeoWatermarkRemover/main/artworks/GWT_VEO_Watermark_Removal_Demo.gif" width="600" alt="Before/After Demo" />
-</p>
+### Video Watermark Removal
+![Video Watermark Removal](assets/demo_video.gif)
+
+### Image Watermark Removal
+![Image Watermark Removal](assets/demo_image.png)
 
 ---
 
