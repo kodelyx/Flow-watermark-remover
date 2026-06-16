@@ -1,37 +1,27 @@
 # 🔷 Gemini Watermark Remover
 
-Remove Gemini watermarks from videos. Single binary, zero dependencies.
+Remove Gemini watermarks from videos using native Go & FFmpeg pipelines.
 
-## Demo
+> [!IMPORTANT]
+> **GPU & VideoToolbox Mandatory:**
+> * You **MUST only use GPU** (CPU encoding is not supported due to slow speed).
+> * On macOS, **VideoToolbox (GPU/Hardware acceleration)** is mandatory. Make sure your FFmpeg is installed with VideoToolbox support.
 
-### Video
-![Video Watermark Removal](assets/demo_video.gif)
-
-### Image
-![Image Watermark Removal](assets/demo_image.png)
-
----
+## Compilation
+```bash
+go build -o GeminiWatermarkTool-Go main.go
+```
 
 ## Usage
 
+### 1. Remove Gemini Watermark
 ```bash
-# 1. First time setup (macOS)
-chmod +x GeminiWatermarkTool-Video
-xattr -dr com.apple.quarantine GeminiWatermarkTool-Video
-
-# 2. Remove watermark from video
-./GeminiWatermarkTool-Video --veo -i input.mp4 -o clean.mp4
-
-# 3. Batch process
-for f in videos/*.mp4; do
-  ./GeminiWatermarkTool-Video --veo -i "$f" -o "clean/$(basename "$f")"
-done
+# Process a video in-place (updates the video directly)
+./GeminiWatermarkTool-Go -i input.mp4
 ```
 
-> 📖 **[Full Guide →](guide.md)** — GPU setup, flags, detailed instructions.
-
----
-
-## Download
-
-👉 [**Latest Release**](https://github.com/kodelyx/Gemini-Watermark-Remover/releases/latest)
+### 2. Add Brand Watermark (Akash Digital Marketing)
+Adds a single centered watermark:
+```bash
+python3 add_brand_watermark.py -i input.mp4 -o output.mp4
+```
