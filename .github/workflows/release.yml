@@ -1,0 +1,44 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          # macOS Intel
+          GOOS=darwin GOARCH=amd64 go build -o dist/GeminiWatermarkTool-darwin-amd64 main.go
+          # macOS Apple Silicon
+          GOOS=darwin GOARCH=arm64 go build -o dist/GeminiWatermarkTool-darwin-arm64 main.go
+          # Windows
+          GOOS=windows GOARCH=amd64 go build -o dist/GeminiWatermarkTool-windows-amd64.exe main.go
+          # Linux
+          GOOS=linux GOARCH=amd64 go build -o dist/GeminiWatermarkTool-linux-amd64 main.go
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/GeminiWatermarkTool-darwin-amd64
+            dist/GeminiWatermarkTool-darwin-arm64
+            dist/GeminiWatermarkTool-windows-amd64.exe
+            dist/GeminiWatermarkTool-linux-amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
