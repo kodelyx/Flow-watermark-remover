@@ -1,27 +1,49 @@
 # 🔷 Gemini Watermark Remover
 
-Remove Gemini watermarks from videos using native Go & FFmpeg pipelines.
+### Remove Google Gemini watermarks from videos and images using native Go and FFmpeg pipelines.
+
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+[![License](https://img.shields.io/github/license/kodelyx/Gemini-Watermark-Remover?style=flat-square&color=ff3366)](LICENSE)
 
 > [!IMPORTANT]
-> **GPU & VideoToolbox Mandatory:**
-> * You **MUST only use GPU** (CPU encoding is not supported due to slow speed).
-> * On macOS, **VideoToolbox (GPU/Hardware acceleration)** is mandatory. Make sure your FFmpeg is installed with VideoToolbox support.
+> **GPU & Hardware Acceleration Required:**
+> * **macOS:** `VideoToolbox` is mandatory. Ensure FFmpeg is built with VideoToolbox support.
+> * **Speed:** CPU processing is not supported due to latency.
 
-## Compilation
+---
+
+## 📸 Demo
+
+<div align="center">
+  <h4>🖼️ Cleaned Image Output</h4>
+  <img src="assets/demo_image.png" alt="Demo Image Output" width="90%" style="border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+
+  <h4>🎥 Cleaned Video Demonstration</h4>
+  <img src="assets/demo_video.gif" alt="Demo Video Output" width="90%" style="border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+</div>
+
+---
+
+## ⚡ Compilation & Setup
+
 ```bash
+# Compile Go utility binary
 go build -o GeminiWatermarkTool-Go main.go
 ```
 
-## Usage
+---
 
-### 1. Remove Gemini Watermark
+## 🚀 Usage
+
 ```bash
-# Process a video in-place (updates the video directly)
+# Auto-renames file to input_cleaned.mp4 and deletes the original
 ./GeminiWatermarkTool-Go -i input.mp4
+
+# Save output to custom path (deletes original on success)
+./GeminiWatermarkTool-Go -i input.mp4 -o custom_output.mp4
 ```
 
-### 2. Add Brand Watermark (Akash Digital Marketing)
-Adds a single centered watermark:
-```bash
-python3 add_brand_watermark.py -i input.mp4 -o output.mp4
-```
+---
+
+## 📄 License
+MIT License.
