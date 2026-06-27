@@ -28,9 +28,20 @@ func main() {
 	outputFlag := flag.String("o", "", "Output path of image or video (optional, defaults to overwrite in-place)")
 	flag.Parse()
 
-	// CLI Mode
+	// 1. Check if flags are used
 	if *inputFlag != "" {
 		runCLIMode(*inputFlag, *outputFlag)
+		return
+	}
+
+	// 2. Fallback to positional arguments: ./tool [input] [output]
+	if flag.NArg() >= 1 {
+		inputPath := flag.Arg(0)
+		outputPath := ""
+		if flag.NArg() >= 2 {
+			outputPath = flag.Arg(1)
+		}
+		runCLIMode(inputPath, outputPath)
 		return
 	}
 
