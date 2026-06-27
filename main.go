@@ -784,6 +784,14 @@ func removeWatermarkFromVideo(videoPath string) error {
 		// macOS: Use hardware-accelerated VideoToolbox decoding and encoding
 		readArgs = []string{"-hwaccel", "videotoolbox", "-i", absPath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-v", "quiet", "-"}
 		encoderArgs = []string{"-c:v", "h264_videotoolbox", "-b:v", "4000k"}
+	} else if isEncoderAvailable("h264_nvenc") {
+		// Windows/Linux with Nvidia GPU: Use hardware-accelerated NVENC
+		readArgs = []string{"-hwaccel", "cuda", "-i", absPath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-v", "quiet", "-"}
+		encoderArgs = []string{"-c:v", "h264_nvenc", "-preset", "p4", "-b:v", "4000k"}
+	} else if isEncoderAvailable("h264_qsv") {
+		// Windows/Linux with Intel GPU: Use hardware-accelerated QSV
+		readArgs = []string{"-hwaccel", "qsv", "-i", absPath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-v", "quiet", "-"}
+		encoderArgs = []string{"-c:v", "h264_qsv", "-b:v", "4000k"}
 	} else {
 		// Windows/Linux fallback: Use standard CPU-based H.264 decoding and encoding
 		readArgs = []string{"-i", absPath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "-v", "quiet", "-"}
@@ -934,4 +942,14 @@ func removeWatermarkFromVideo(videoPath string) error {
 	}
 
 	return fmt.Errorf("failed to compile clean watermark-free video")
+}
+
+// isEncoderAvailable queries FFmpeg to check if a specific hardware-accelerated encoder is supported
+func isEncoderAvailable(encoder string) bool {
+	cmd := exec.Command("ffmpeg", "-encoders")
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), encoder)
 }
