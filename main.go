@@ -85,7 +85,8 @@ func runCLIMode(inputPath, outputPath string) {
 			if outputPath != "" {
 				outputFile = filepath.Join(outputPath, "cleaned_"+filename)
 			} else {
-				outputFile = inputFile // In-place
+				// Default behavior: create a cleaned version in the same directory and delete the original
+				outputFile = filepath.Join(inputPath, "cleaned_"+filename)
 			}
 
 			absInput, err := filepath.Abs(inputFile)
@@ -121,6 +122,15 @@ func runCLIMode(inputPath, outputPath string) {
 
 			log.Printf("✨ Cleaned %s in %.2fs", filename, time.Since(fileStartTime).Seconds())
 			processedCount++
+
+			// Delete original input file if a separate output path was successfully written
+			if absOutput != absInput {
+				if err := os.Remove(absInput); err != nil {
+					log.Printf("⚠️ Warning: Failed to delete original file %s: %v", filename, err)
+				} else {
+					log.Printf("🗑️ Original file deleted: %s", absInput)
+				}
+			}
 		}
 
 		log.Printf("🎉 Finished batch processing! Cleaned %d files in %.2fs", processedCount, time.Since(startTime).Seconds())
@@ -141,7 +151,10 @@ func runCLIMode(inputPath, outputPath string) {
 	// Determine output path
 	finalOutPath := outputPath
 	if finalOutPath == "" {
-		finalOutPath = inputPath // In-place update
+		// Default behavior: create a new file with "_cleaned" suffix and delete the original
+		ext := filepath.Ext(inputPath)
+		base := strings.TrimSuffix(inputPath, ext)
+		finalOutPath = base + "_cleaned" + ext
 	}
 
 	// Setup absolute path
