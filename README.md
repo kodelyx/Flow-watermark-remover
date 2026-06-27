@@ -1,4 +1,4 @@
-# 🔷 Gemini Watermark Remover
+# ⚪ Gemini Watermark Remover
 
 Remove Google Gemini watermarks from videos and images using Go & FFmpeg.
 
