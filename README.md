@@ -15,7 +15,7 @@ Remove Google Gemini watermarks from videos and images using Go & FFmpeg.
 # 1. Compile Go binary
 go build -o GeminiWatermarkTool-Go main.go
 
-# 2. Run (Auto-renames to input_cleaned.mp4 and deletes original)
+# 2. Run (Auto-renames to cleaned_input.mp4 and deletes original)
 ./GeminiWatermarkTool-Go input.mp4
 
 # Save output to custom path (deletes original on success)

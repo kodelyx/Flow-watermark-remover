@@ -162,10 +162,10 @@ func runCLIMode(inputPath, outputPath string) {
 	// Determine output path
 	finalOutPath := outputPath
 	if finalOutPath == "" {
-		// Default behavior: create a new file with "_cleaned" suffix and delete the original
-		ext := filepath.Ext(inputPath)
-		base := strings.TrimSuffix(inputPath, ext)
-		finalOutPath = base + "_cleaned" + ext
+		// Default behavior: prefix "cleaned_" at the start of the filename and delete the original
+		dir := filepath.Dir(inputPath)
+		base := filepath.Base(inputPath)
+		finalOutPath = filepath.Join(dir, "cleaned_"+base)
 	}
 
 	// Setup absolute path
