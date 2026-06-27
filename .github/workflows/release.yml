@@ -24,11 +24,6 @@ jobs:
             goarch: amd64
             binary_name: GeminiWatermarkTool-Go-windows-amd64.exe
           - os: macos
-            arch: amd64
-            goos: darwin
-            goarch: amd64
-            binary_name: GeminiWatermarkTool-Go-macos-amd64
-          - os: macos
             arch: arm64
             goos: darwin
             goarch: arm64
