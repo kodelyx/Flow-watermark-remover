@@ -22,5 +22,6 @@ go build -o GeminiWatermarkTool-Go main.go
 ./GeminiWatermarkTool-Go -i input.mp4 -o custom_output.mp4
 ```
 
-> [!NOTE]
-> GPU hardware acceleration is required (macOS requires VideoToolbox).
+## 📋 Requirements
+* **macOS:** FFmpeg + `VideoToolbox` (GPU acceleration)
+* **Windows / Linux:** FFmpeg + Nvidia (`CUDA`) or Intel (`QSV`) GPU acceleration
