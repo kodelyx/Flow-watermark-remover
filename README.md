@@ -1,12 +1,11 @@
-# 🌊 Gemini-Flow Watermark Remover
+# 🌊 Gemini-Flow Video Watermark Remover
 
-Remove Google Gemini watermarks from videos and images using Go & FFmpeg.
+A high-performance tool to remove Google Gemini watermarks from **videos** using Go & FFmpeg.
 
 ## 📸 Demo
 
 <div align="center">
-  <img src="assets/demo_image.png" alt="Demo Image Output" width="48%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
-  <img src="assets/demo_video.gif" alt="Demo Video Output" width="48%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+  <img src="assets/demo_video.gif" alt="Demo Video Output" width="80%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
 </div>
 
 ## 🚀 Setup & Usage
