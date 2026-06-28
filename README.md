@@ -1,6 +1,6 @@
-# 🌊 Gemini-Flow Video Watermark Remover
+# 🌊 Flow Omni Video Watermark Remover
 
-A high-performance tool to remove Google Gemini watermarks from **videos** using Go & FFmpeg.
+A high-performance tool to remove watermarks from **videos** using Go & FFmpeg.
 
 ## 📸 Demo
 
@@ -12,13 +12,13 @@ A high-performance tool to remove Google Gemini watermarks from **videos** using
 
 ```bash
 # 1. Compile Go binary
-go build -o Flow-watermark-remover main.go
+go build -o Flow-Omni-Watermark-Remover main.go
 
 # 2. Run
-./Flow-watermark-remover input.mp4
+./Flow-Omni-Watermark-Remover input.mp4
 
 # Save output to custom path
-./Flow-watermark-remover input.mp4 custom_output.mp4
+./Flow-Omni-Watermark-Remover input.mp4 custom_output.mp4
 ```
 
 ## 📋 Requirements
