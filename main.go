@@ -26,7 +26,12 @@ func main() {
 	// Parse CLI Arguments
 	inputFlag := flag.String("i", "", "Input path of image or video to remove watermark")
 	outputFlag := flag.String("o", "", "Output path of image or video (optional, defaults to overwrite in-place)")
+	gainFlag := flag.Float64("g", 0.60, "Custom alpha gain scale (default: 0.60)")
 	flag.Parse()
+
+	// Assign dynamic gain values if flag was specified
+	videoAlphaScale = *gainFlag
+	globalAlphaGain = *gainFlag
 
 	// 1. Check if flags are used
 	if *inputFlag != "" {
@@ -135,6 +140,8 @@ func runCLIMode(inputPath, outputPath string) {
 			processedCount++
 
 			// Delete original input file if a separate output path was successfully written
+			// Keep original input file (disabled deletion for safety)
+			/*
 			if absOutput != absInput {
 				if err := os.Remove(absInput); err != nil {
 					log.Printf("⚠️ Warning: Failed to delete original file %s: %v", filename, err)
@@ -142,6 +149,7 @@ func runCLIMode(inputPath, outputPath string) {
 					log.Printf("🗑️ Original file deleted: %s", absInput)
 				}
 			}
+			*/
 		}
 
 		log.Printf("🎉 Finished batch processing! Cleaned %d files in %.2fs", processedCount, time.Since(startTime).Seconds())
@@ -195,6 +203,8 @@ func runCLIMode(inputPath, outputPath string) {
 	}
 
 	// Delete the original input file if a separate output path was successfully written
+	// Keep original input file (disabled deletion for safety)
+	/*
 	if finalOutPath != inputPath {
 		if err := os.Remove(absInput); err != nil {
 			log.Printf("⚠️ Warning: Failed to delete original input file: %v", err)
@@ -202,6 +212,7 @@ func runCLIMode(inputPath, outputPath string) {
 			log.Printf("🗑️ Original input file deleted: %s", absInput)
 		}
 	}
+	*/
 
 	log.Printf("✨ Success! Cleaned file: %s (Time: %.2fs)", absOutput, time.Since(startTime).Seconds())
 }
@@ -229,10 +240,14 @@ func copyFile(src, dst string) error {
 
 // Constants for mathematical reverse alpha blending
 const (
-	alphaThreshold  = 0.002
-	maxAlpha        = 0.99
-	logoValue       = 255.0
-	videoAlphaScale = 0.6
+	alphaThreshold = 0.002
+	maxAlpha       = 0.99
+	logoValue      = 255.0
+)
+
+var (
+	videoAlphaScale = 0.60
+	globalAlphaGain = 0.60
 )
 
 // Embedded base64-encoded PNG assets for the 48px and 96px watermarks
@@ -457,14 +472,85 @@ func FindWatermarkOffset(img image.Image, alphaMap []float32, logoSize int, stan
 	return bestX, bestY, bestScore
 }
 
-// FindWatermarkOffsetVideo locates the watermark coordinates in raw Y channel using cross-correlation template matching
-func FindWatermarkOffsetVideo(yChannel []byte, width, height int, alphaMap []float32, logoSize int, standardX, standardY int) (int, int, float64) {
-	bestX, bestY := standardX, standardY
+func ComputeNCC(patchA []float64, patchB []float64) float64 {
+	if len(patchA) != len(patchB) || len(patchA) == 0 {
+		return 0
+	}
 
-	minX := standardX - 80
-	maxX := standardX + 80
-	minY := standardY - 80
-	maxY := standardY + 80
+	sumA, sumB := 0.0, 0.0
+	for i := 0; i < len(patchA); i++ {
+		sumA += patchA[i]
+		sumB += patchB[i]
+	}
+	meanA := sumA / float64(len(patchA))
+	meanB := sumB / float64(len(patchB))
+
+	varA, varB, cov := 0.0, 0.0, 0.0
+	for i := 0; i < len(patchA); i++ {
+		diffA := patchA[i] - meanA
+		diffB := patchB[i] - meanB
+		varA += diffA * diffA
+		varB += diffB * diffB
+		cov += diffA * diffB
+	}
+
+	den := math.Sqrt(varA * varB)
+	if den < 1e-8 {
+		return 0
+	}
+	return cov / den
+}
+
+func ComputeSobelFrame(yChannel []byte, width, height int) []float64 {
+	grad := make([]float64, width*height)
+	for y := 1; y < height-1; y++ {
+		for x := 1; x < width-1; x++ {
+			i := y*width + x
+			gx := -float64(yChannel[i-width-1]) - 2.0*float64(yChannel[i-1]) - float64(yChannel[i+width-1]) +
+				float64(yChannel[i-width+1]) + 2.0*float64(yChannel[i+1]) + float64(yChannel[i+width+1])
+			gy := -float64(yChannel[i-width-1]) - 2.0*float64(yChannel[i-width]) - float64(yChannel[i-width+1]) +
+				float64(yChannel[i+width-1]) + 2.0*float64(yChannel[i+width]) + float64(yChannel[i+width+1])
+			grad[i] = math.Sqrt(gx*gx + gy*gy)
+		}
+	}
+	return grad
+}
+
+func ComputeSobelAlpha(alphaMap []float32, logoSize int) []float64 {
+	grad := make([]float64, logoSize*logoSize)
+	for y := 1; y < logoSize-1; y++ {
+		for x := 1; x < logoSize-1; x++ {
+			i := y*logoSize + x
+			gx := -float64(alphaMap[i-logoSize-1]) - 2.0*float64(alphaMap[i-1]) - float64(alphaMap[i+logoSize-1]) +
+				float64(alphaMap[i-logoSize+1]) + 2.0*float64(alphaMap[i+1]) + float64(alphaMap[i+logoSize+1])
+			gy := -float64(alphaMap[i-logoSize-1]) - 2.0*float64(alphaMap[i-logoSize]) - float64(alphaMap[i-logoSize+1]) +
+				float64(alphaMap[i+logoSize-1]) + 2.0*float64(alphaMap[i+logoSize]) + float64(alphaMap[i+logoSize+1])
+			grad[i] = math.Sqrt(gx*gx + gy*gy)
+		}
+	}
+	return grad
+}
+
+// FindWatermarkOffsetVideo locates the watermark coordinates in raw Y channel using spatial and gradient cross-correlation
+func FindWatermarkOffsetVideo(
+	yChannel []byte,
+	yGrad []float64,
+	width, height int,
+	alphaMap []float32,
+	alphaGrad []float64,
+	logoSize int,
+	standardX, standardY int,
+) (int, int, float64) {
+	bestX, bestY := standardX, standardY
+	bestScore := -1.0
+
+	// Use a small local search radius (8 pixels) since our candidate positions are already highly accurate.
+	// This prevents false positives from background textures.
+	const radius = 8
+	minX := standardX - radius
+	maxX := standardX + radius
+	minY := standardY - radius
+	maxY := standardY + radius
 
 	if minX < 0 {
 		minX = 0
@@ -479,45 +565,31 @@ func FindWatermarkOffsetVideo(yChannel []byte, width, height int, alphaMap []flo
 		maxY = height - logoSize
 	}
 
-	sumAlpha := 0.0
-	for _, a := range alphaMap {
-		sumAlpha += float64(a)
-	}
-	meanAlpha := sumAlpha / float64(logoSize*logoSize)
-
-	varAlpha := 0.0
-	for _, a := range alphaMap {
-		diff := float64(a) - meanAlpha
-		varAlpha += diff * diff
-	}
-
-	bestScore := -1.0
 	patchGray := make([]float64, logoSize*logoSize)
+	patchGrad := make([]float64, logoSize*logoSize)
+
+	alphaMap64 := make([]float64, logoSize*logoSize)
+	for i, v := range alphaMap {
+		alphaMap64[i] = float64(v)
+	}
 
 	for cy := minY; cy <= maxY; cy++ {
 		for cx := minX; cx <= maxX; cx++ {
-			sumPixel := 0.0
 			for dy := 0; dy < logoSize; dy++ {
 				for dx := 0; dx < logoSize; dx++ {
-					yVal := float64(yChannel[(cy+dy)*width+(cx+dx)])
-					patchGray[dy*logoSize+dx] = yVal
-					sumPixel += yVal
+					idx := (cy+dy)*width + (cx+dx)
+					patchGray[dy*logoSize+dx] = float64(yChannel[idx])
+					patchGrad[dy*logoSize+dx] = yGrad[idx]
 				}
 			}
-			meanPixel := sumPixel / float64(logoSize*logoSize)
 
-			varPixel := 0.0
-			cov := 0.0
-			for i := 0; i < logoSize*logoSize; i++ {
-				diffPixel := patchGray[i] - meanPixel
-				diffAlpha := float64(alphaMap[i]) - meanAlpha
-				varPixel += diffPixel * diffPixel
-				cov += diffPixel * diffAlpha
-			}
+			spatialScore := ComputeNCC(patchGray, alphaMap64)
+			gradientScore := ComputeNCC(patchGrad, alphaGrad)
 
-			score := 0.0
-			if varPixel > 0.0001 && varAlpha > 0.0001 {
-				score = cov / math.Sqrt(varPixel*varAlpha)
+			// Combine score: spatial + 0.8 * max(0, gradient)
+			score := spatialScore
+			if gradientScore > 0 {
+				score += gradientScore * 0.8
 			}
 
 			if score > bestScore {
@@ -582,10 +654,11 @@ func removeWatermarkFromImage(imagePath string) error {
 
 	// Define Candidates
 	type Candidate struct {
-		logoSize int
-		x        int
-		y        int
-		variant  string // "V1" or "V2"
+		logoSize  int
+		x         int
+		y         int
+		variant   string // "V1" or "V2"
+		alphaGain float64
 	}
 
 	var candidates []Candidate
@@ -594,33 +667,53 @@ func removeWatermarkFromImage(imagePath string) error {
 	if isLarge {
 		// V2 Large
 		candidates = append(candidates, Candidate{
-			logoSize: 96,
-			x:        width - 192 - 96,
-			y:        height - 192 - 96,
-			variant:  "V2",
+			logoSize:  96,
+			x:         width - 192 - 96,
+			y:         height - 192 - 96,
+			variant:   "V2",
+			alphaGain: globalAlphaGain,
 		})
 		// V1 Large
 		candidates = append(candidates, Candidate{
-			logoSize: 96,
-			x:        width - 64 - 96,
-			y:        height - 64 - 96,
-			variant:  "V1",
+			logoSize:  96,
+			x:         width - 64 - 96,
+			y:         height - 64 - 96,
+			variant:   "V1",
+			alphaGain: globalAlphaGain,
 		})
 	} else {
-		// V1 Small
+		// V1 Small (32px margin)
 		candidates = append(candidates, Candidate{
-			logoSize: 48,
-			x:        width - 32 - 48,
-			y:        height - 32 - 48,
-			variant:  "V1",
+			logoSize:  48,
+			x:         width - 32 - 48,
+			y:         height - 32 - 48,
+			variant:   "V1",
+			alphaGain: globalAlphaGain,
+		})
+		// V1 Small (96px margin - Current Large Margin)
+		candidates = append(candidates, Candidate{
+			logoSize:  48,
+			x:         width - 96 - 48,
+			y:         height - 96 - 48,
+			variant:   "V1_LargeMargin",
+			alphaGain: globalAlphaGain,
+		})
+		// V1 Small (72px margin - Legacy Margin)
+		candidates = append(candidates, Candidate{
+			logoSize:  48,
+			x:         width - 72 - 48,
+			y:         height - 72 - 48,
+			variant:   "V1_LegacyMargin",
+			alphaGain: globalAlphaGain,
 		})
 		// V2 Small
 		v2Margin, v2Logo := v2SmallConfigFromDims(width, height)
 		candidates = append(candidates, Candidate{
-			logoSize: v2Logo,
-			x:        width - v2Margin - v2Logo,
-			y:        height - v2Margin - v2Logo,
-			variant:  "V2",
+			logoSize:  v2Logo,
+			x:         width - v2Margin - v2Logo,
+			y:         height - v2Margin - v2Logo,
+			variant:   "V2",
+			alphaGain: globalAlphaGain,
 		})
 	}
 
@@ -690,10 +783,11 @@ func removeWatermarkFromImage(imagePath string) error {
 			fB := float64(b) / 257.0
 
 			// Solve original = (watermarked - alpha * 255.0) / (1 - alpha)
-			oneMinusAlpha := 1.0 - float64(alpha)
-			newR := (fR - float64(alpha)*logoValue) / oneMinusAlpha
-			newG := (fG - float64(alpha)*logoValue) / oneMinusAlpha
-			newB := (fB - float64(alpha)*logoValue) / oneMinusAlpha
+			scaledAlpha := float64(alpha) * bestCand.alphaGain
+			oneMinusAlpha := 1.0 - scaledAlpha
+			newR := (fR - scaledAlpha*logoValue) / oneMinusAlpha
+			newG := (fG - scaledAlpha*logoValue) / oneMinusAlpha
+			newB := (fB - scaledAlpha*logoValue) / oneMinusAlpha
 
 			// Clamp to [0, 255]
 			cR := uint8(math.Min(math.Max(newR, 0), 255))
@@ -766,11 +860,46 @@ func removeWatermarkFromVideo(videoPath string) error {
 		fps = "24"
 	}
 
-	config := DetectWatermarkConfig(width, height, true)
-	alphaMap := alphaCache48
-	if config.LogoSize == 96 {
-		alphaMap = alphaCache96
+	// 1. Generate video candidates list
+	type VideoCandidate struct {
+		logoSize  int
+		x         int
+		y         int
+		alphaGain float64
 	}
+	var candidates []VideoCandidate
+	
+	// Determine candidates based on size
+	isLarge := width > 1024 && height > 1024
+	if isLarge {
+		// 96px with 64px margin (standard)
+		candidates = append(candidates, VideoCandidate{96, width - 64 - 96, height - 64 - 96, 1.0})
+		// 96px with 144px margin (inset)
+		candidates = append(candidates, VideoCandidate{96, width - 144 - 96, height - 144 - 96, 1.0})
+		// 96px with 108px margin (portrait standard/relocated)
+		candidates = append(candidates, VideoCandidate{96, width - 108 - 96, height - 108 - 96, 1.0})
+	} else {
+		// 48px with 32px margin
+		candidates = append(candidates, VideoCandidate{48, width - 32 - 48, height - 32 - 48, 1.0})
+		// 48px with 72px margin (standard 720p standard)
+		candidates = append(candidates, VideoCandidate{48, width - 72 - 48, height - 72 - 48, 1.0})
+		// 48px with 96px margin (standard 720p inset/relocated)
+		candidates = append(candidates, VideoCandidate{48, width - 96 - 48, height - 96 - 48, 1.0})
+		// 48px with 108px margin
+		candidates = append(candidates, VideoCandidate{48, width - 108 - 48, height - 108 - 48, 1.0})
+		// 35px with 102x96 margin
+		candidates = append(candidates, VideoCandidate{35, width - 102 - 35, height - 96 - 35, 1.0})
+		// 44px with 29x40 margin
+		candidates = append(candidates, VideoCandidate{44, width - 29 - 44, height - 40 - 44, 1.0})
+	}
+
+	config := WatermarkConfig{
+		LogoSize: 48,
+		X:        0,
+		Y:        0,
+	}
+	alphaMap := alphaCache48
+	var selectedAlphaGain float64 = 1.0
 
 	// Setup temp path for safe in-place rewrite
 	tempOut := absPath + ".tmp.mp4"
@@ -856,11 +985,57 @@ func removeWatermarkFromVideo(videoPath string) error {
 			meanY := sumY / float64(ySize)
 
 			if meanY >= 20.0 { // threshold for non-black frame
-				bestX, bestY, score := FindWatermarkOffsetVideo(frameBuf[:ySize], width, height, alphaMap, config.LogoSize, config.X, config.Y)
-				if score >= 0.20 {
+				bestScore := -1.0
+				var bestCand VideoCandidate
+				var bestX, bestY int
+				var bestAlphaMap []float32
+
+				yGrad := ComputeSobelFrame(frameBuf[:ySize], width, height)
+
+				for _, cand := range candidates {
+					aMap, err := getAlphaMapForSize(cand.logoSize)
+					if err != nil {
+						continue
+					}
+					aGrad := ComputeSobelAlpha(aMap, cand.logoSize)
+					cx, cy, score := FindWatermarkOffsetVideo(frameBuf[:ySize], yGrad, width, height, aMap, aGrad, cand.logoSize, cand.x, cand.y)
+
+					if bestScore == -1.0 {
+						bestScore = score
+						bestX, bestY = cx, cy
+						bestCand = cand
+						bestAlphaMap = aMap
+					} else {
+						// Prioritize larger logo size when both are confident matches (>= 0.35)
+						if score >= 0.35 && bestScore >= 0.35 {
+							if cand.logoSize > bestCand.logoSize {
+								bestScore = score
+								bestX, bestY = cx, cy
+								bestCand = cand
+								bestAlphaMap = aMap
+							} else if cand.logoSize == bestCand.logoSize && score > bestScore {
+								bestScore = score
+								bestX, bestY = cx, cy
+								bestCand = cand
+								bestAlphaMap = aMap
+							}
+						} else if score > bestScore {
+							bestScore = score
+							bestX, bestY = cx, cy
+							bestCand = cand
+							bestAlphaMap = aMap
+						}
+					}
+				}
+
+				if bestScore >= 0.20 {
+					config.LogoSize = bestCand.logoSize
 					config.X = bestX
 					config.Y = bestY
+					alphaMap = bestAlphaMap
+					selectedAlphaGain = bestCand.alphaGain
 					isOffsetFound = true
+					log.Printf("🎯 Detected video watermark (size: %d) at (%d, %d) with score %.4f", config.LogoSize, config.X, config.Y, bestScore)
 				}
 			}
 		}
@@ -885,19 +1060,19 @@ func removeWatermarkFromVideo(videoPath string) error {
 					}
 
 					// Scale down watermark intensity for videos
-					scaledAlpha := alpha * videoAlphaScale
+					scaledAlpha := float64(alpha) * videoAlphaScale * selectedAlphaGain
 					if scaledAlpha > maxAlpha {
 						scaledAlpha = maxAlpha
 					}
 
-					oneMinusAlpha := 1.0 - float64(scaledAlpha)
+					oneMinusAlpha := 1.0 - scaledAlpha
 
 					// 1. Process Y channel (Luminance)
 					yOffset := py*width + px
 					if yOffset < ySize {
 						yVal := float64(frameBuf[yOffset])
 						// Solve original = (watermarked - alpha * 235.0) / (1 - alpha)
-						newY := (yVal - float64(scaledAlpha)*235.0) / oneMinusAlpha
+						newY := (yVal - scaledAlpha*235.0) / oneMinusAlpha
 						frameBuf[yOffset] = byte(math.Min(math.Max(newY, 0), 255))
 					}
 

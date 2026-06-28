@@ -1,3 +1,3 @@
-module gemini-watermark-remover
+module Flow-watermark-remover
 
 go 1.22
